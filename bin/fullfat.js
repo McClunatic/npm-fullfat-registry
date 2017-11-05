@@ -40,6 +40,10 @@ var parser = dashdash.createParser({
       type: 'number',
       help: 'Max ms to wait before assuming disconnection. Default=3600000',
       helpArg: 'MS' },
+    { names: [ 'whitelist', 'w' ],
+      type: 'string',
+      help: 'File from which to read whitelist regular expression strings.',
+      helpArg: 'WHITELIST' },
     { names: [ 'help', 'h' ],
       type: 'bool',
       help: 'Display this help' }

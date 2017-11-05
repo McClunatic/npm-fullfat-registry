@@ -58,6 +58,11 @@ function FullFat(conf) {
 
   this.whitelist = conf.whitelist || [ /.*/ ]
 
+  if (typeof this.whitelist === 'string') {
+    this.whitelist = JSON.parse(fs.readFileSync(this.whitelist, 'utf8'))
+                     .map(s => new RegExp(s));
+  }
+
   this.tmp = conf.tmp
   if (!this.tmp) {
     var rand = crypto.randomBytes(6).toString('hex')
