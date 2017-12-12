@@ -21,6 +21,14 @@ var readmeTrim = require('npm-registry-readme-trim')
 
 util.inherits(FullFat, EE)
 
+function maybeEncodeURI(str) {
+  if (str.startsWith("_design")) {
+    return str;
+  } else {
+    return str.replace(/\//g, '%2f');
+  }
+}
+
 module.exports = FullFat
 
 function FullFat(conf) {
@@ -158,7 +166,7 @@ FullFat.prototype.onchange = function(er, change) {
 
 FullFat.prototype.getDoc = function(change) {
   var q = '?revs=true&att_encoding_info=true'
-  var opt = url.parse(this.skim + '/' + change.id + q)
+  var opt = url.parse(this.skim + '/' + maybeEncodeURI(change.id) + q)
   opt.method = 'GET'
   opt.headers = {
     'user-agent': this.ua,
@@ -191,7 +199,7 @@ FullFat.prototype.unpublish = function(change) {
 
 FullFat.prototype.putDoc = function(change) {
   var q = '?revs=true&att_encoding_info=true'
-  var opt = url.parse(this.fat + '/' + change.id + q)
+  var opt = url.parse(this.fat + '/' + maybeEncodeURI(change.id) + q)
 
   opt.method = 'GET'
   opt.headers = {
@@ -206,7 +214,8 @@ FullFat.prototype.putDoc = function(change) {
 FullFat.prototype.putDesign = function(change) {
   var doc = change.doc
   this.pause()
-  var opt = url.parse(this.fat + '/' + change.id + '?new_edits=false')
+  var opt = url.parse(this.fat + '/' + maybeEncodeURI(change.id) +
+                      '?new_edits=false')
   var b = new Buffer(JSON.stringify(doc), 'utf8')
   opt.method = 'PUT'
   opt.headers = {
@@ -251,7 +260,8 @@ FullFat.prototype.ondeletehead = function(change, res) {
     return this.afterDelete(change)
 
   var rev = res.headers.etag.replace(/^"|"$/g, '')
-  opt = url.parse(this.fat + '/' + change.id + '?rev=' + rev)
+  opt = url.parse(this.fat + '/' + maybeEncodeURI(change.id) +
+                  '?rev=' + rev)
   opt.headers = {
     'user-agent': this.ua,
     'connection': 'close'
@@ -286,6 +296,7 @@ FullFat.prototype.onfatget = function(change, er, f, res) {
     f = JSON.parse(JSON.stringify(change.doc))
 
   f._attachments = f._attachments || {}
+  console.log('onfatget, f._attachments = ' + JSON.stringify(f._attachments))
   change.fat = f
   this.merge(change)
 }
@@ -307,12 +318,19 @@ FullFat.prototype.merge = function(change) {
       var w = this.whitelist[i]
       if (typeof w === 'string')
         pass = w === change.id
+        if (w === change.id)
+          console.log(change.id + ' matched ' + w);
       else
         pass = w.exec(change.id)
+        if (w.exec(change.id))
+          console.log(change.id + ' matched ' + w);
     }
     if (!pass) {
+      console.log('%s was NOT found in whitelist', change.id)
       f._attachments = {}
       return this.fetchAll(change, [], [])
+    } else {
+      console.log('%s was found in whitelist', change.id)
     }
   }
 
@@ -434,7 +452,8 @@ FullFat.prototype.put = function(change, did) {
 
   // put with new_edits=false to retain the same rev
   // this assumes that NOTHING else is writing to this database!
-  var p = url.parse(this.fat + '/' + f.name + '?new_edits=false')
+  var p = url.parse(this.fat + '/' + maybeEncodeURI(f.name) +
+                    '?new_edits=false')
   p.method = 'PUT'
   p.headers = {
     'user-agent': this.ua,
@@ -453,6 +472,8 @@ FullFat.prototype.put = function(change, did) {
 
   p.headers['content-length'] = attSize + bSize + doc.length
 
+  // console.log('REQUEST: %s', JSON.stringify(p));
+  // process.exit();
   var req = hh.request(p)
   req.on('error', this.emit.bind(this, 'error'))
   req.write(b, 'ascii')
@@ -511,7 +532,8 @@ FullFat.prototype.onputres = function(change, er, data, res) {
   else {
     this.emit('put', change, data)
     // Just a best-effort cleanup.  No big deal, really.
-    rimraf(this.tmp + '/' + change.id + '-' + change.seq, function() {})
+    rimraf(this.tmp + '/' + maybeEncodeURI(change.id) + '-' + change.seq,
+           function() {})
     this.resume()
   }
 }
@@ -536,7 +558,8 @@ FullFat.prototype.fetchOne = function(change, need, did, v) {
   var f = change.fat
   var r = url.parse(change.doc.versions[v].dist.tarball)
   if (this.registry) {
-    var p = '/' + change.id + '/-/' + path.basename(r.pathname)
+    var p = '/' + maybeEncodeURI(change.id) + '/-/' +
+             path.basename(r.pathname)
     r = url.parse(this.registry + p)
   }
 
@@ -556,8 +579,12 @@ FullFat.prototype.onattres = function(change, need, did, v, r, res) {
   var f = change.fat
   var att = r.href
   var sum = f.versions[v].dist.shasum
-  var filename = f.name + '-' + v + '.tgz'
+  var filename = f.name.replace(/^.*\//, '') + '-' + v + '.tgz'
+
   var file = path.join(this.tmp, change.id + '-' + change.seq, filename)
+  // console.log('ONATTRES, filename: %s', filename)
+  // console.log('ONATTRES, file: %s', file)
+  // process.exit()
 
   // TODO: If the file already exists, get its size.
   // If the size matches content-length, get the md5
@@ -631,8 +658,10 @@ FullFat.prototype.onattres = function(change, need, did, v, r, res) {
     // registry where this is being stored.  It'll be rewritten by
     // the _show/pkg function when going through the rewrites, anyway,
     // but this url will work if the couch itself is accessible.
-    var newatt = this.publicFat + '/' + change.id +
-                 '/' + change.id + '-' + v + '.tgz'
+    //
+    // BPM: This may not be right for scoped packages
+    var newatt = this.publicFat + '/' + maybeEncodeURI(change.id) +
+                 '/' + path.basename(change.id) + '-' + v + '.tgz'
     f.versions[v].dist.tarball = newatt
 
     if (res.headers['content-length'])
