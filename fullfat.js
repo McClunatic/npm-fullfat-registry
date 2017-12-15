@@ -328,7 +328,7 @@ FullFat.prototype.merge = function(change) {
     if (!pass) {
       console.log('%s was NOT found in whitelist', change.id)
       f._attachments = {}
-      return this.fetchAll(change, [], [])
+      return this.fetchSome(change, [], [], 0, 4)
     } else {
       console.log('%s was found in whitelist', change.id)
     }
@@ -391,7 +391,7 @@ FullFat.prototype.merge = function(change) {
   if (!changed)
     this.resume()
   else
-    this.fetchAll(change, need, [])
+    this.fetchSome(change, need, [], 0, 4)
 }
 
 FullFat.prototype.put = function(change, did) {
@@ -554,7 +554,25 @@ FullFat.prototype.fetchAll = function(change, need, did) {
   }.bind(this))
 }
 
-FullFat.prototype.fetchOne = function(change, need, did, v) {
+FullFat.prototype.fetchSome = function(change, need, did, begin, stride) {
+  console.log('Fetching %s: %d - %d (%d)', change.id, begin, begin + stride, need.length);
+  var f = change.fat
+  var tmp = path.resolve(this.tmp, change.id + '-' + change.seq)
+  var len = need.length
+  if (!len)
+    return this.put(change, did)
+
+  var errState = null
+
+  mkdirp(tmp, function(er) {
+    if (er)
+      return this.emit('error', er)
+    need.slice(begin, begin + stride).forEach(
+      this.fetchOne.bind(this, change, need, did, begin, stride))
+  }.bind(this))
+}
+
+FullFat.prototype.fetchOne = function(change, need, did, begin, stride, v) {
   var f = change.fat
   var r = url.parse(change.doc.versions[v].dist.tarball)
   if (this.registry) {
@@ -571,11 +589,11 @@ FullFat.prototype.fetchOne = function(change, need, did, v) {
 
   var req = hh.request(r)
   req.on('error', this.emit.bind(this, 'error'))
-  req.on('response', this.onattres.bind(this, change, need, did, v, r))
+  req.on('response', this.onattres.bind(this, change, need, did, begin, stride, v, r))
   req.end()
 }
 
-FullFat.prototype.onattres = function(change, need, did, v, r, res) {
+FullFat.prototype.onattres = function(change, need, did, begin, stride, v, r, res) {
   var f = change.fat
   var att = r.href
   var sum = f.versions[v].dist.shasum
@@ -604,6 +622,8 @@ FullFat.prototype.onattres = function(change, need, did, v, r, res) {
       this.emit('download', a)
     if (need.length === did.length)
       this.put(change, did)
+    else if (begin + stride === did.length)
+      this.fetchSome(change, need, did, begin + stride, stride)
   }.bind(this)
 
   // if the attachment can't be found, then skip that version
