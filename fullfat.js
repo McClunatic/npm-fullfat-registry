@@ -84,7 +84,6 @@ function FullFat(conf) {
 }
 
 FullFat.prototype.readSeq = function(file) {
-  console.log('readSeq')
   if (!this.seqFile)
     process.nextTick(this.start.bind(this))
   else
@@ -92,7 +91,6 @@ FullFat.prototype.readSeq = function(file) {
 }
 
 FullFat.prototype.gotSeq = function(er, data) {
-  console.log('gotSeq')
   if (er && er.code === 'ENOENT')
     data = '0'
   else if (er)
@@ -104,7 +102,6 @@ FullFat.prototype.gotSeq = function(er, data) {
 }
 
 FullFat.prototype.start = function() {
-  console.log('start')
   if (this.follow)
     return this.emit('error', new Error('already started'))
 
@@ -127,7 +124,6 @@ FullFat.prototype._emit = function(ev, arg) {
 }
 
 FullFat.prototype.writeSeq = function() {
-  console.log('writeSeq')
   var seq = +this.since
   if (this.seqFile && !this.writingSeq && seq > 0) {
     var data = seq + '\n'
@@ -152,7 +148,6 @@ FullFat.prototype.writeSeq = function() {
 }
 
 FullFat.prototype.onchange = function(er, change) {
-  console.log('onchange')
   if (er)
     return this.emit('error', er)
 
@@ -171,7 +166,6 @@ FullFat.prototype.onchange = function(er, change) {
 }
 
 FullFat.prototype.getDoc = function(change) {
-  console.log('getDoc')
   var q = '?revs=true&att_encoding_info=true'
   var uri = url.parse(this.skim + '/' + maybeEncodeURI(change.id) + q)
   var opt = {
@@ -183,13 +177,18 @@ FullFat.prototype.getDoc = function(change) {
     },
   }
 
-  var req = request(opt)
-  req.on('response', parse(this.ongetdoc.bind(this, change)))
-  req.on('error', this.emit.bind(this, 'error'));
+  var req = request(opt, function(er, res, body) {
+    if (!er && (res.statusCode > 299 || res.statusCode < 200)) {
+      er = new Error(body)
+      er.statusCode = res.statusCode
+    }
+    this.ongetdoc(change, er, JSON.parse(body), res)
+  }.bind(this));
+  // req.on('response', parse(this.ongetdoc.bind(this, change)))
+  // req.on('error', this.emit.bind(this, 'error'));
 }
 
 FullFat.prototype.ongetdoc = function(change, er, data, res) {
-  console.log('ongetDoc')
   if (er)
     this.emit('error', er)
   else {
@@ -204,13 +203,11 @@ FullFat.prototype.ongetdoc = function(change, er, data, res) {
 }
 
 FullFat.prototype.unpublish = function(change) {
-  console.log('unpublish')
   change.fat = change.doc
   this.put(change, [])
 }
 
 FullFat.prototype.putDoc = function(change) {
-  console.log('putDoc')
   var q = '?revs=true&att_encoding_info=true'
   var uri = url.parse(this.fat + '/' + maybeEncodeURI(change.id) + q)
   var opt = {
@@ -221,13 +218,18 @@ FullFat.prototype.putDoc = function(change) {
       'connection': 'close'
     },
   }
-  var req = request(opt)
-  req.on('response', parse(this.onfatget.bind(this, change)))
-  req.on('error', this.emit.bind(this, 'error'))
+  var req = request(opt, function(er, res, body) {
+    if (!er && (res.statusCode > 299 || res.statusCode < 200)) {
+      er = new Error(body)
+      er.statusCode = res.statusCode
+    }
+    this.onfatget(change, er, JSON.parse(body), res)
+  }.bind(this));
+  // req.on('response', parse(this.onfatget.bind(this, change)))
+  // req.on('error', this.emit.bind(this, 'error'))
 }
 
 FullFat.prototype.putDesign = function(change) {
-  console.log('putDesign')
   var doc = change.doc
   this.pause()
   var uri = url.parse(this.fat + '/' + maybeEncodeURI(change.id) +
@@ -244,14 +246,19 @@ FullFat.prototype.putDesign = function(change) {
     },
   }
 
-  var req = request(opt)
-  req.on('response', parse(this.onputdesign.bind(this, change)))
-  req.on('error', this.emit.bind(this, 'error'));
+  var req = request(opt, function(er, res, body) {
+    if (!er && (res.statusCode > 299 || res.statusCode < 200)) {
+      er = new Error(body)
+      er.statusCode = res.statusCode
+    }
+    this.onputdesign(change, er, JSON.parse(body), res)
+  }.bind(this));
+  // req.on('response', parse(this.onputdesign.bind(this, change)))
+  // req.on('error', this.emit.bind(this, 'error'));
   req.end(b)
 }
 
 FullFat.prototype.onputdesign = function(change, er, data, res) {
-  console.log('onputDesign')
   if (er)
     return this.emit('error', er)
   this.emit('putDesign', change, data)
@@ -259,7 +266,6 @@ FullFat.prototype.onputdesign = function(change, er, data, res) {
 }
 
 FullFat.prototype.delete = function(change) {
-  console.log('delete')
   var name = change.id
 
   var uri = url.parse(this.fat + '/' + name)
@@ -272,14 +278,22 @@ FullFat.prototype.delete = function(change) {
     },
   }
 
-  var req = request(opt)
-  req.on('response', this.ondeletehead.bind(this, change))
-  req.on('error', this.emit.bind(this, 'error'));
+  var req = request(opt, function(er, res, body) {
+    if (!er && (res.statusCode > 299 || res.statusCode < 200)) {
+      er = new Error(body)
+      er.statusCode = res.statusCode
+    }
+    if (er)
+      this.emit('error', er)
+    else if (res)
+      this.ondeletehead(change, res)
+  }.bind(this));
+  // req.on('response', this.ondeletehead.bind(this, change))
+  // req.on('error', this.emit.bind(this, 'error'));
   req.end()
 }
 
 FullFat.prototype.ondeletehead = function(change, res) {
-  console.log('ondeletehead')
   // already gone?  totally fine.  move on, nothing to delete here.
   if (res.statusCode === 404)
     return this.afterDelete(change)
@@ -295,14 +309,19 @@ FullFat.prototype.ondeletehead = function(change, res) {
       'connection': 'close'
     },
   }
-  var req = request(opt)
-  req.on('response', parse(this.ondelete.bind(this, change)))
-  req.on('error', this.emit.bind(this, 'error'));
+  var req = request(opt, function(er, res, body) {
+    if (!er && (res.statusCode > 299 || res.statusCode < 200)) {
+      er = new Error(body)
+      er.statusCode = res.statusCode
+    }
+    this.ondelete(change, er, JSON.parse(body), res)
+  }.bind(this));
+  // req.on('response', parse(this.ondelete.bind(this, change)))
+  // req.on('error', this.emit.bind(this, 'error'));
   req.end()
 }
 
 FullFat.prototype.ondelete = function(change, er, data, res) {
-  console.log('ondelete')
   if (er && er.statusCode === 404)
     this.afterDelete(change)
   else if (er)
@@ -313,13 +332,11 @@ FullFat.prototype.ondelete = function(change, er, data, res) {
 }
 
 FullFat.prototype.afterDelete = function(change) {
-  console.log('afterDelete')
   this.emit('delete', change)
   this.resume()
 }
 
 FullFat.prototype.onfatget = function(change, er, f, res) {
-  console.log('onfatget')
   if (er && er.statusCode !== 404)
     return this.emit('error', er)
 
@@ -327,14 +344,12 @@ FullFat.prototype.onfatget = function(change, er, f, res) {
     f = JSON.parse(JSON.stringify(change.doc))
 
   f._attachments = f._attachments || {}
-  console.log('onfatget, f._attachments = ' + JSON.stringify(f._attachments))
   change.fat = f
   this.merge(change)
 }
 
 
 FullFat.prototype.merge = function(change) {
-  console.log('merge')
   var s = change.doc
   var f = change.fat
 
@@ -358,11 +373,11 @@ FullFat.prototype.merge = function(change) {
           console.log(change.id + ' matched ' + w);
     }
     if (!pass) {
-      console.log('%s was NOT found in whitelist', change.id)
+      console.log('%s was found in whitelist: NO', change.id)
       f._attachments = {}
       return this.fetchSome(change, [], [], 0, 4)
     } else {
-      console.log('%s was found in whitelist', change.id)
+      console.log('%s was found in whitelist: YES', change.id)
     }
   }
 
@@ -427,7 +442,6 @@ FullFat.prototype.merge = function(change) {
 }
 
 FullFat.prototype.put = function(change, did) {
-  console.log('put')
   var f = change.fat
   change.did = did
   // at this point, all the attachments have been fetched into
@@ -485,16 +499,13 @@ FullFat.prototype.put = function(change, did) {
 
   // put with new_edits=false to retain the same rev
   // this assumes that NOTHING else is writing to this database!
-  var uri = url.parse(this.fat + '/' + maybeEncodeURI(f.name) +
+  var p = url.parse(this.fat + '/' + maybeEncodeURI(f.name) +
                     '?new_edits=false')
-  var opt = {
-    uri: uri,
-    method: 'PUT',
-    headers: {
-      'user-agent': this.ua,
-      'content-type': 'multipart/related;boundary="' + boundary + '"',
-      'connection': 'close'
-    },
+  p.method = 'PUT'
+  p.headers = {
+    'user-agent': this.ua,
+    'content-type': 'multipart/related;boundary="' + boundary + '"',
+    'connection': 'close'
   }
 
   var doc = new Buffer(JSON.stringify(f), 'utf8')
@@ -506,20 +517,19 @@ FullFat.prototype.put = function(change, did) {
           'content-length: ' + doc.length + '\r\n\r\n'
   bSize += b.length
 
-  opt.headers['content-length'] = attSize + bSize + doc.length
+  p.headers['content-length'] = attSize + bSize + doc.length
 
-  // console.log('REQUEST: %s', JSON.stringify(p));
-  // process.exit();
-  var req = request(opt)
-  req.on('response', parse(this.onputres.bind(this, change)))
-  req.on('error', this.emit.bind(this, 'error'));
+  // Need hh-style request because apparently I can't pipe multiple times to
+  // a request request, needed for the attachments
+  var req = hh.request(p)
+  req.on('error', this.emit.bind(this, 'error'))
   req.write(b, 'ascii')
   req.write(doc)
   this.putAttachments(req, change, boundaries, send)
+  req.on('response', parse(this.onputres.bind(this, change)))
 }
 
 FullFat.prototype.putAttachments = function(req, change, boundaries, send) {
-  console.log('putAttachments')
   // send is the ordered list of [[name, attachment object],...]
   var b = boundaries.shift()
   var ns = send.shift()
@@ -548,7 +558,6 @@ FullFat.prototype.putAttachments = function(req, change, boundaries, send) {
 }
 
 FullFat.prototype.onputres = function(change, er, data, res) {
-  console.log('onputres')
 
   if (!change.id)
     throw new Error('wtf?')
@@ -577,7 +586,6 @@ FullFat.prototype.onputres = function(change, er, data, res) {
 }
 
 FullFat.prototype.fetchAll = function(change, need, did) {
-  console.log('fetchAll')
   var f = change.fat
   var tmp = path.resolve(this.tmp, change.id + '-' + change.seq)
   var len = need.length
@@ -594,8 +602,7 @@ FullFat.prototype.fetchAll = function(change, need, did) {
 }
 
 FullFat.prototype.fetchSome = function(change, need, did, begin, stride) {
-  console.log('fetchSome')
-  console.log('Fetching %s: %d - %d (%d)', change.id, begin, begin + stride, need.length);
+  console.log('Fetching %s: %d - %d (%d)', change.id, begin + 1, begin + stride, need.length);
   var f = change.fat
   var tmp = path.resolve(this.tmp, change.id + '-' + change.seq)
   var len = need.length
@@ -613,7 +620,6 @@ FullFat.prototype.fetchSome = function(change, need, did, begin, stride) {
 }
 
 FullFat.prototype.fetchOne = function(change, need, did, begin, stride, v) {
-  console.log('fetchOne')
   var f = change.fat
   var uri = url.parse(change.doc.versions[v].dist.tarball)
   if (this.registry) {
@@ -629,25 +635,31 @@ FullFat.prototype.fetchOne = function(change, need, did, begin, stride, v) {
       'user-agent': this.ua,
       'connection': 'close'
     },
+    encoding: null,
   }
 
-  var req = request(opt)
-  req.on('response', this.onattres.bind(this, change, need, did, begin, stride, v, uri))
-  req.on('error', this.emit.bind(this, 'error'));
+  var req = request(opt, function(er, res, body) {
+    if (!er && (res.statusCode > 299 || res.statusCode < 200)) {
+      er = new Error(body)
+      er.statusCode = res.statusCode
+    }
+    if (er)
+      this.emit('error', er)
+    else if (res)
+      this.onattres(change, need, did, begin, stride, v, uri, res, body)
+  }.bind(this));
+  // req.on('response', this.onattres.bind(this, change, need, did, begin, stride, v, uri))
+  // req.on('error', this.emit.bind(this, 'error'));
   req.end()
 }
 
-FullFat.prototype.onattres = function(change, need, did, begin, stride, v, r, res) {
-  console.log('onattres')
+FullFat.prototype.onattres = function(change, need, did, begin, stride, v, r, res, data) {
   var f = change.fat
   var att = r.href
   var sum = f.versions[v].dist.shasum
   var filename = f.name.replace(/^.*\//, '') + '-' + v + '.tgz'
 
   var file = path.join(this.tmp, change.id + '-' + change.seq, filename)
-  // console.log('ONATTRES, filename: %s', filename)
-  // console.log('ONATTRES, file: %s', file)
-  // process.exit()
 
   // TODO: If the file already exists, get its size.
   // If the size matches content-length, get the md5
@@ -684,26 +696,46 @@ FullFat.prototype.onattres = function(change, need, did, begin, stride, v, r, re
       return this.emit('error', er)
   }
 
+  // need two copies of the data Buffer:
+  //  - one to write to file
+  //  - one to check the shasum
+  var contentLength = data.length
+
+  // we'll make a copy for the file now
+  var fileBuffer = new Buffer(contentLength)
   var fstr = fs.createWriteStream(file)
 
-  // check the shasum while we're at it
+  // but check the shasum first
   var sha = crypto.createHash('sha1')
   var shaOk = false
   var errState = null
 
+  sha.update(data)
+  var digested_sum = sha.digest('hex')
+  if (digested_sum === sum)
+    shaOk = true
+
   sha.on('data', function(c) {
+    console.log('data in sha, wtf?')
     c = c.toString('hex')
     if (c === sum)
       shaOk = true
   }.bind(this))
 
+  // if the content length isn't in the headers, add it here, since we know the
+  // length already and don't need a counter
   if (!res.headers['content-length']) {
-    var counter = new Counter()
-    res.pipe(counter)
+    res.headers['content-length'] = contentLength
+    // var counter = new Counter()
+    // res.pipe(counter)
   }
 
-  res.pipe(sha)
-  res.pipe(fstr)
+  // console.log('piping sha')
+  // res.pipe(sha)
+  // res.pipe(fstr)
+  // rather than piping, just write the fileBuffer and end the stream
+  fstr.write(fileBuffer)
+  fstr.end()
 
   fstr.on('error', function(er) {
     er.change = change
@@ -714,6 +746,8 @@ FullFat.prototype.onattres = function(change, need, did, begin, stride, v, r, re
   }.bind(this))
 
   fstr.on('close', function() {
+    var stats = fs.statSync(file)
+    console.log('Size of %s:', file, stats.size)
     if (errState || !shaOk) {
       // something didn't work, but the error was squashed
       // take that as a signal to just delete this version
@@ -748,19 +782,16 @@ FullFat.prototype.onattres = function(change, need, did, begin, stride, v, r, re
 }
 
 FullFat.prototype.destroy = function() {
-  console.log('destroy')
   if (this.follow)
     this.follow.die()
 }
 
 FullFat.prototype.pause = function() {
-  console.log('pause')
   if (this.follow)
     this.follow.pause()
 }
 
 FullFat.prototype.resume = function() {
-  console.log('resume')
   this.writeSeq()
   if (this.follow)
     this.follow.resume()
