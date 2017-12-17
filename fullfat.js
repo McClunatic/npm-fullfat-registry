@@ -279,14 +279,7 @@ FullFat.prototype.delete = function(change) {
   }
 
   var req = request(opt, function(er, res, body) {
-    if (!er && (res.statusCode > 299 || res.statusCode < 200)) {
-      er = new Error(body)
-      er.statusCode = res.statusCode
-    }
-    if (er)
-      this.emit('error', er)
-    else if (res)
-      this.ondeletehead(change, res)
+    this.ondeletehead(change, res)
   }.bind(this));
   // req.on('response', this.ondeletehead.bind(this, change))
   // req.on('error', this.emit.bind(this, 'error'));
