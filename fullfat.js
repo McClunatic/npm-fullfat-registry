@@ -632,14 +632,7 @@ FullFat.prototype.fetchOne = function(change, need, did, begin, stride, v) {
   }
 
   var req = request(opt, function(er, res, body) {
-    if (!er && (res.statusCode > 299 || res.statusCode < 200)) {
-      er = new Error(body)
-      er.statusCode = res.statusCode
-    }
-    if (er)
-      this.emit('error', er)
-    else if (res)
-      this.onattres(change, need, did, begin, stride, v, uri, res, body)
+    this.onattres(change, need, did, begin, stride, v, uri, res, body)
   }.bind(this));
   // req.on('response', this.onattres.bind(this, change, need, did, begin, stride, v, uri))
   // req.on('error', this.emit.bind(this, 'error'));
