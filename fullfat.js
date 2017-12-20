@@ -368,7 +368,7 @@ FullFat.prototype.merge = function(change) {
     if (!pass) {
       console.log('%s was found in whitelist: NO', change.id)
       f._attachments = {}
-      return this.fetchSome(change, [], [], 0, 4)
+      return this.fetchSome(change, [], {did: [], missing: []}, 0, 4)
     } else {
       console.log('%s was found in whitelist: YES', change.id)
     }
@@ -431,7 +431,7 @@ FullFat.prototype.merge = function(change) {
   if (!changed)
     this.resume()
   else
-    this.fetchSome(change, need, [], 0, 4)
+    this.fetchSome(change, need, {did: [], missing: []}, 0, 4)
 }
 
 FullFat.prototype.put = function(change, did) {
@@ -600,13 +600,14 @@ FullFat.prototype.fetchSome = function(change, need, did, begin, stride) {
   var tmp = path.resolve(this.tmp, change.id + '-' + change.seq)
   var len = need.length
   if (!len)
-    return this.put(change, did)
+    return this.put(change, did.did)
 
   var errState = null
 
   mkdirp(tmp, function(er) {
     if (er)
       return this.emit('error', er)
+    did.offset = 0
     need.slice(begin, begin + stride).forEach(
       this.fetchOne.bind(this, change, need, did, begin, stride))
   }.bind(this))
@@ -657,16 +658,18 @@ FullFat.prototype.onattres = function(change, need, did, begin, stride, v, r, re
     if (f._attachments)
       delete f._attachments[file]
     need.splice(need.indexOf(v), 1)
+    did.missing.push(v)
+    did.offset += 1
     maybeDone(null)
   }
 
   var maybeDone = function maybeDone(a) {
     if (a)
       this.emit('download', a)
-    if (need.length === did.length)
-      this.put(change, did)
-    else if (begin + stride === did.length)
-      this.fetchSome(change, need, did, begin + stride, stride)
+    if (need.length === did.did.length)
+      this.put(change, did.did)
+    else if (begin + stride === did.did.length + did.missing.length)
+      this.fetchSome(change, need, did, begin + stride - did.offset, stride)
   }.bind(this)
 
   // if the attachment can't be found, then skip that version
@@ -761,7 +764,7 @@ FullFat.prototype.onattres = function(change, need, did, begin, stride, v, r, re
       length: cl,
       type: res.headers['content-type']
     }
-    did.push(a)
+    did.did.push(a)
     maybeDone(a)
 
   }.bind(this))
